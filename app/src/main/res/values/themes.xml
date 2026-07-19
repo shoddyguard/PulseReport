@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Framework theme only; all real theming is done in Compose. -->
+    <style name="Theme.PulseReport" parent="android:Theme.Material.NoActionBar" />
+</resources>
