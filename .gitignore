@@ -32,3 +32,9 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Directory for storing temporary planning files
+.planning/
+
+# Health Connect Toolbox cache (downloaded on demand, never committed)
+.tooling/
