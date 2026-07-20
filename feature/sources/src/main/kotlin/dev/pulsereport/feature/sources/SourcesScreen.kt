@@ -1,12 +1,13 @@
 package dev.pulsereport.feature.sources
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,20 +15,17 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,23 +99,27 @@ fun SourcesScreen(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .padding(horizontal = 14.dp)
-            .padding(bottom = 12.dp),
+            .statusBarsPadding(),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        SourcesHeader(
-            showSaved = showSaved,
-            // Sources is still a bottom-nav tab, not pushed onto a back stack, so there's
-            // nowhere to go back to yet. We'll wire a real pop once the screen sits under a
-            // settings menu.
-            onBackClick = {},
-        )
-        uiState.metrics.forEach { metricState ->
+        item(key = "sources_header", contentType = "header") {
+            SourcesHeader(
+                showSaved = showSaved,
+                // Sources is still a bottom-nav tab, not pushed onto a back stack, so there's
+                // nowhere to go back to yet. We'll wire a real pop once the screen sits under a
+                // settings menu.
+                onBackClick = {},
+            )
+        }
+        items(
+            items = uiState.metrics,
+            key = { metricState -> metricState.metric.name },
+            contentType = { "metric" },
+        ) { metricState ->
             SourceMetricCard(
                 metric = metricState.metric,
                 sources = metricState.sources,
@@ -185,68 +188,86 @@ private fun SourceMetricCard(
     modifier: Modifier = Modifier,
 ) {
     val accent = metric.accent(PulseTheme.colors)
-    var expanded by remember { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "chevronRotation")
+    var expanded by rememberSaveable(metric.name) { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(EXPAND_COLLAPSE_MILLIS),
+        label = "chevronRotation",
+    )
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
             .clip(TileShape)
-            .background(PulseTheme.colors.card),
+            .background(PulseTheme.colors.card)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .fillMaxHeight()
-                .background(accent.accent),
-        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 14.dp, end = 16.dp, top = 15.dp, bottom = 15.dp),
+                .then(if (sources.isNotEmpty()) Modifier.clickable { expanded = !expanded } else Modifier)
+                .padding(vertical = 6.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(if (sources.isNotEmpty()) Modifier.clickable { expanded = !expanded } else Modifier)
-                    .padding(vertical = 6.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = metric.icon(),
-                        contentDescription = null,
-                        tint = accent.accent,
-                        modifier = Modifier.size(22.dp),
-                    )
+                Icon(
+                    imageVector = metric.icon(),
+                    contentDescription = null,
+                    tint = accent.accent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = metric.displayLabel(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = accent.accent,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+                if (sources.isNotEmpty()) {
+                    Spacer(modifier = Modifier.weight(1f))
                     Text(
-                        text = metric.displayLabel(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = accent.accent,
-                        modifier = Modifier.padding(start = 8.dp),
+                        text = if (sources.size == 1) "1 source" else "${sources.size} sources",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PulseTheme.colors.textSecondary,
                     )
-                    if (sources.isNotEmpty()) {
-                        Spacer(modifier = Modifier.weight(1f))
-                        Text(
-                            text = if (sources.size == 1) "1 source" else "${sources.size} sources",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = PulseTheme.colors.textSecondary,
-                        )
-                        Icon(
-                            imageVector = PulseIcons.ChevronDown,
-                            contentDescription = if (expanded) "Collapse" else "Expand",
-                            tint = PulseTheme.colors.textMuted,
-                            modifier = Modifier
-                                .padding(start = 4.dp)
-                                .size(20.dp)
-                                .rotate(chevronRotation),
-                        )
-                    }
+                    Icon(
+                        imageVector = PulseIcons.ChevronDown,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        tint = PulseTheme.colors.textMuted,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(20.dp)
+                            .rotate(chevronRotation),
+                    )
                 }
-                if (sources.isNotEmpty() && !expanded) {
+            }
+        }
+        if (sources.isEmpty()) {
+            Text(
+                text = "No apps have written this data yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = PulseTheme.colors.textSecondary,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        } else {
+            AnimatedContent(
+                targetState = expanded,
+                transitionSpec = {
+                    (fadeIn(animationSpec = tween(EXPAND_COLLAPSE_MILLIS / 2)) togetherWith
+                        fadeOut(animationSpec = tween(EXPAND_COLLAPSE_MILLIS / 2))) using
+                        SizeTransform(clip = true) { _, _ -> tween(EXPAND_COLLAPSE_MILLIS) }
+                },
+                label = "sourceDetails",
+            ) {
+                if (it) {
+                    ReorderableSourceList(
+                        sources = sources,
+                        accent = accent,
+                        onReorder = onReorder,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                } else {
                     Text(
                         text = "Preferred: ${sources.first().label}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -254,32 +275,6 @@ private fun SourceMetricCard(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-            }
-            if (sources.isEmpty()) {
-                Text(
-                    text = "No apps have written this data yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PulseTheme.colors.textSecondary,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            AnimatedVisibility(
-                visible = expanded && sources.isNotEmpty(),
-                // We use fixed durations here instead of AnimatedVisibility's default spring -
-                // that spring settles slower the taller the content is, and with a few rows in
-                // the list it drags on into a sluggish multi-second collapse instead of a
-                // snappy one.
-                enter = expandVertically(animationSpec = tween(EXPAND_COLLAPSE_MILLIS)) +
-                    fadeIn(animationSpec = tween(EXPAND_COLLAPSE_MILLIS)),
-                exit = shrinkVertically(animationSpec = tween(EXPAND_COLLAPSE_MILLIS)) +
-                    fadeOut(animationSpec = tween(EXPAND_COLLAPSE_MILLIS / 2)),
-            ) {
-                ReorderableSourceList(
-                    sources = sources,
-                    accent = accent,
-                    onReorder = onReorder,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
             }
         }
     }
