@@ -21,12 +21,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,7 @@ import kotlin.math.roundToInt
 
 /** How far back the date picker lets you go, matching the seeder's 30-day window. */
 private const val SELECTABLE_DAYS_BACK = 29L
+private val RefreshTriggerDistance = 48.dp
 
 @Composable
 fun DashboardScreen(
@@ -72,55 +75,88 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pullToRefreshState = rememberPullToRefreshState()
 
-    Column(
+    PullToRefreshBox(
+        isRefreshing = uiState.isRefreshing,
+        onRefresh = viewModel::refresh,
+        state = pullToRefreshState,
+        threshold = RefreshTriggerDistance,
         modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .padding(horizontal = 14.dp)
-            .padding(bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .fillMaxSize(),
+        indicator = {},
     ) {
-        DashboardHeader(
-            selectedDate = uiState.selectedDate,
-            syncedSourceCount = uiState.syncedSourceCount,
-            onDateSelected = viewModel::onDateSelected,
-        )
-        PulseScoreCard()
-        StepsTile(
-            data = uiState.steps,
-            onClick = { onOpenMetric(HealthMetric.STEPS, uiState.selectedDate) },
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SleepTile(
-                data = uiState.sleep,
-                onClick = { onOpenMetric(HealthMetric.SLEEP, uiState.selectedDate) },
-                modifier = Modifier.weight(1f),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .statusBarsPadding()
+                .padding(horizontal = 14.dp)
+                .padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            DashboardHeader(
+                selectedDate = uiState.selectedDate,
+                syncedSourceCount = uiState.syncedSourceCount,
+                isRefreshing = uiState.isRefreshing,
+                onDateSelected = viewModel::onDateSelected,
             )
-            HeartTile(
-                data = uiState.heart,
-                onClick = { onOpenMetric(HealthMetric.HEART_RATE, uiState.selectedDate) },
-                modifier = Modifier.weight(1f),
+            if (pullToRefreshState.distanceFraction > 0f || uiState.isRefreshing) {
+                SyncIndicator()
+            }
+            PulseScoreCard()
+            StepsTile(
+                data = uiState.steps,
+                onClick = { onOpenMetric(HealthMetric.STEPS, uiState.selectedDate) },
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SleepTile(
+                    data = uiState.sleep,
+                    onClick = { onOpenMetric(HealthMetric.SLEEP, uiState.selectedDate) },
+                    modifier = Modifier.weight(1f),
+                )
+                HeartTile(
+                    data = uiState.heart,
+                    onClick = { onOpenMetric(HealthMetric.HEART_RATE, uiState.selectedDate) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActiveCaloriesTile(
+                    data = uiState.activeCalories,
+                    onClick = { onOpenMetric(HealthMetric.CALORIES, uiState.selectedDate) },
+                    modifier = Modifier.weight(1f),
+                )
+                WaterTile(
+                    data = uiState.water,
+                    onClick = { onOpenMetric(HealthMetric.HYDRATION, uiState.selectedDate) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            WeightTile(
+                data = uiState.weight,
+                onClick = { onOpenMetric(HealthMetric.WEIGHT, uiState.selectedDate) },
+            )
+            DiaryCtaTile(onClick = onOpenDiary)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActiveCaloriesTile(
-                data = uiState.activeCalories,
-                onClick = { onOpenMetric(HealthMetric.CALORIES, uiState.selectedDate) },
-                modifier = Modifier.weight(1f),
-            )
-            WaterTile(
-                data = uiState.water,
-                onClick = { onOpenMetric(HealthMetric.HYDRATION, uiState.selectedDate) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-        WeightTile(
-            data = uiState.weight,
-            onClick = { onOpenMetric(HealthMetric.WEIGHT, uiState.selectedDate) },
+    }
+}
+
+@Composable
+private fun SyncIndicator(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            color = PulseTheme.colors.accent,
+            strokeWidth = 2.dp,
         )
-        DiaryCtaTile(onClick = onOpenDiary)
     }
 }
 
@@ -128,6 +164,7 @@ fun DashboardScreen(
 private fun DashboardHeader(
     selectedDate: LocalDate,
     syncedSourceCount: Int,
+    isRefreshing: Boolean,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -173,7 +210,7 @@ private fun DashboardHeader(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        StatusChip(text = "$syncedSourceCount synced")
+        StatusChip(text = if (isRefreshing) "Syncing" else "$syncedSourceCount synced")
         Box(
             modifier = Modifier
                 .padding(start = 10.dp)

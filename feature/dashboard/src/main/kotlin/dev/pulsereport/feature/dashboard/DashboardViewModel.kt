@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -40,6 +42,18 @@ class DashboardViewModel @Inject constructor(
 
     fun onDateSelected(date: LocalDate) {
         selectedDate.value = date
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshing = true) }
+            try {
+                val priorities = sourcePriorityRepository.observePriorities().first()
+                _uiState.value = loadDashboardState(selectedDate.value, priorities).copy(isRefreshing = false)
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isRefreshing = false) }
+            }
+        }
     }
 
     private suspend fun loadDashboardState(

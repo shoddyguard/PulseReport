@@ -7,6 +7,7 @@ import java.time.LocalDate
 data class DashboardUiState(
     val selectedDate: LocalDate,
     val syncedSourceCount: Int,
+    val isRefreshing: Boolean = false,
     val steps: StepsData,
     val sleep: SleepData,
     val heart: HeartData,
